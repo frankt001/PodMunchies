@@ -5,3 +5,4 @@ pydub
 tqdm
 yt_dlp
 pytube
+dotenv
