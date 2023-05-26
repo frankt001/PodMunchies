@@ -7,3 +7,4 @@ yt_dlp
 pytube
 python-dotenv==0.19.1
 imageio-ffmpeg
+static_ffmpeg

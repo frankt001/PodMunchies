@@ -4,10 +4,9 @@ import openai
 import re
 from dotenv import load_dotenv
 from youtube_downloader import download_youtube_audio, split_audio, transcribe_audio_segments, save_transcripts, get_youtube_video_title, summarize_large_text, generate_final_summary, text_to_speech
-import imageio_ffmpeg as ffmpeg
-
-print(ffmpeg.get_ffmpeg_version())
-print(ffmpeg.get_ffmpeg_exe())
+import static_ffmpeg
+# ffmpeg installed on first call to add_paths(), threadsafe.
+static_ffmpeg.add_paths()  
 
 # Load environment variables
 load_dotenv()
