@@ -5,4 +5,5 @@ pydub
 tqdm
 yt_dlp
 pytube
-dotenvdotenv==0.19.1
+python-dotenv==0.19.1
+
