@@ -1,5 +1,0 @@
-openai
-pydub
-tqdm
-python-dotenv
-requests
