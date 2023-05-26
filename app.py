@@ -4,6 +4,10 @@ import openai
 import re
 from dotenv import load_dotenv
 from youtube_downloader import download_youtube_audio, split_audio, transcribe_audio_segments, save_transcripts, get_youtube_video_title, summarize_large_text, generate_final_summary, text_to_speech
+import imageio_ffmpeg as ffmpeg
+
+print(ffmpeg.get_ffmpeg_version())
+print(ffmpeg.get_ffmpeg_exe())
 
 # Load environment variables
 load_dotenv()
