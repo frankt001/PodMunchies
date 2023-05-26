@@ -1,5 +1,4 @@
 openai
-re
 requests
 xml.etree.ElementTree
 openai
