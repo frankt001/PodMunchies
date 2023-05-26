@@ -1,0 +1,10 @@
+openai
+os
+re
+requests
+xml.etree.ElementTree
+openai
+pydub
+tqdm
+yt_dlp
+pytube
