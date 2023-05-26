@@ -11,8 +11,7 @@ static_ffmpeg.add_paths()
 # Load environment variables
 load_dotenv()
 
-openai.api_key = os.environ["OPENAI_API_KEY"]
-
+openai.api_key = os.environ['OPENAI_API_KEY']
 
 def app():
 
@@ -27,6 +26,8 @@ def app():
 
     if transcribe_button:
         if youtube_video_url != "":
+            
+            
 
             # Fetch the video title and use it as the filename
             episode_title = get_youtube_video_title(youtube_video_url)
