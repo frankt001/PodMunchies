@@ -8,7 +8,6 @@ from tqdm import tqdm
 from dotenv import load_dotenv
 import yt_dlp
 from pytube import YouTube
-import sys
 
 
 load_dotenv()
@@ -163,7 +162,7 @@ def text_to_speech(text, output_file):
     headers = {
         "Accept": "audio/mpeg",
         "Content-Type": "application/json",
-        "xi-api-key": '270f30c2d01d4529066bb6b97802b2df'
+        "xi-api-key": os.getenv('XI_API_KEY')  
     }
 
     data = {
