@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+import time
 import xml.etree.ElementTree as ET
 import openai
 from pydub import AudioSegment
@@ -8,9 +9,18 @@ from tqdm import tqdm
 from dotenv import load_dotenv
 import yt_dlp
 from pytube import YouTube
-
+import time
 
 load_dotenv()
+
+def with_retries(func, max_retries=5, *args, **kwargs):
+    for i in range(max_retries):
+        try:
+            return func(*args, **kwargs)  # Call your function
+        except openai.error.RateLimitError as e:
+            print(f"Rate limit error: {str(e)}, retrying in {2 ** i} seconds...")
+            time.sleep(2 ** i)  # Exponential backoff
+    raise Exception("Failed after max retries")
 
 def get_youtube_video_title(youtube_url):
     yt = YouTube(youtube_url)
@@ -41,37 +51,25 @@ def download_youtube_audio(youtube_url, save_directory, episode_title=None, down
     print(f"Download complete: {local_filename}")
     return local_filename, episode_title
 
-#Split podcast episode into segments
-def split_audio(mp3_path, segment_duration_minutes=20):
-    audio = AudioSegment.from_mp3(mp3_path)
-    segment_duration_ms = segment_duration_minutes * 60 * 1000
+#Transcribe audio segments using Gambit Engine
+def transcribe_audio_segments(file_path: str):
+    headers = {'Authorization': 'ge_ec58094b1ad2ad.d547f6621a84c617e23c0f90dc988a41656f08042bd28a2fcaa76f5540054361'}
+    url = 'https://api.gambitengine.com'
+    r = requests.post(f'{url}/v1/scribe/transcriptions', headers=headers)
+    r.raise_for_status()
+    transcription = r.json()['transcription']
+    upload_request = r.json()['upload_request']
+    r = requests.post(upload_request['url'], data=upload_request['fields'], files={'file': open(file_path, 'rb')})
 
-    segments = []
-    audio_length_ms = len(audio)
-    current_position = 0
+    for x in range(10):
+        r = requests.get(f'{url}/v1/scribe/transcriptions/{transcription["transcription_id"]}', headers=headers)
+        r.raise_for_status()
+        transcription = r.json()
+        if transcription['transcribed'] == True:
+            break
+        time.sleep(5)
 
-    while current_position < audio_length_ms:
-        print(f"Splitting audio: {current_position / 1000:.1f}/{audio_length_ms / 1000:.1f} seconds")
-        end_position = current_position + segment_duration_ms
-        segment = audio[current_position:end_position]
-        segments.append(segment)
-        current_position = end_position
-
-    return segments
-
-#Transcribe audio segments using OpenAI API
-def transcribe_audio_segments(segments):
-    transcripts = []
-
-    for i, segment in enumerate(segments):
-        print(f"Transcribing segment {i + 1}/{len(segments)}")
-        segment.export("temp_segment.mp3", format="mp3")
-        with open("temp_segment.mp3", "rb") as audio_file:
-            response = openai.Audio.transcribe("whisper-1", audio_file)
-        transcripts.append(response['text'])
-        os.remove("temp_segment.mp3")
-
-    return transcripts
+    return [transcription['text']]
 
 #Save transcripts to file
 def save_transcripts(transcripts, save_directory, filename):
@@ -106,18 +104,20 @@ def summarize_chunk(chunk):
     summary = response.choices[0].message.content.strip()
     return summary
 
-def summarize_large_text(text):
+def summarize_large_text(transcripts):
     max_tokens = 4090  # Reserve tokens for instructions and conversation context
-    chunks = split_text_into_chunks(text, max_tokens)
     summaries = []
     
-    for i, chunk in enumerate(chunks):
-        print(f"Summarizing chunk {i+1}/{len(chunks)}")
-        summary = summarize_chunk(chunk)
-        summaries.append(summary)
+    for text in transcripts:
+        chunks = split_text_into_chunks(text, max_tokens)
+        for i, chunk in enumerate(chunks):
+            print(f"Summarizing chunk {i+1}/{len(chunks)}")
+            summary = summarize_chunk(chunk)
+            summaries.append(summary)
     
     print("Summaries aggregated.")
     return ' '.join(summaries)
+
 
 def generate_final_summary(summary_text):
     response = openai.ChatCompletion.create(
@@ -137,7 +137,7 @@ def generate_final_summary(summary_text):
 
     return response.choices[0].message.content.strip()
 
-def show_note_summary(show_notes):
+def show_note_summary(summarized_bullet_points):
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -147,7 +147,7 @@ def show_note_summary(show_notes):
             },
             {
                 "role": "user",
-                "content": f"Summarize the transcript in a clear and concise manner that. Chapters should be meaningful length and not too short. To format your markdown file, follow this structure: # [Descriptive Title]  <overview of the video> - Use bullet points to provide a detailed description of key points and insights. Title for the topic - Use bullet points to provide a detailed description of key points and insights. Repeat the above structure as necessary, and use subheadings to organize your notes. Formatting Tips: * Do not make the chapters too short, ensure that each section has at least 3-5 bullet points * Use bullet points to describe important steps and insights, being as comprehensive as possible. Summary Tips: * Use only content from the transcript. Do not add any additional information. * Make a new line after and before each bullet point {show_notes}"
+                "content": f"Summarize the transcript in a clear and concise manner that. Chapters should be meaningful length and not too short. To format your markdown file, follow this structure: # [Descriptive Title]  <overview of the video> - Use bullet points to provide a detailed description of key points and insights. Title for the topic - Use bullet points to provide a detailed description of key points and insights. Repeat the above structure as necessary, and use subheadings to organize your notes. Formatting Tips: * Do not make the chapters too short, ensure that each section has at least 3-5 bullet points * Use bullet points to describe important steps and insights, being as comprehensive as possible. Summary Tips: * Use only content from the transcript. Do not add any additional information. * Make a new line after and before each bullet point {summarized_bullet_points}"
             },
         ],
         temperature=0.6,
@@ -217,13 +217,10 @@ if __name__ == "__main__":
     topics_path = os.path.join(save_directory, f"topics_{episode_title}.txt")
     final_summary_path = os.path.join(save_directory, f"final_summary_{episode_title}.txt")
     show_note_path = os.path.join(save_directory, f"show_note_{episode_title}.txt")
-        
-    # Split the episode into 20-minute segments
-    segments = split_audio(local_filename)
 
     # Transcribe the audio segments
     if not os.path.exists(transcript_path):
-        transcripts = transcribe_audio_segments(segments)
+        transcripts = transcribe_audio_segments(local_filename)
         # Save the transcripts
         save_transcripts(transcripts, save_directory, f"transcript_{episode_title}.txt")
         print("Transcripts saved.")
